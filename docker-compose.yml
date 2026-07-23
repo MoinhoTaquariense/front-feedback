@@ -8,6 +8,6 @@ services:
       NODE_ENV: production
       PORT: "3000"
       HOSTNAME: 0.0.0.0
-      BACKEND_URL: ${BACKEND_URL:?Defina BACKEND_URL nas variaveis do Dokploy}
+      BACKEND_URL: ${BACKEND_URL:-http://backend:5555}
     ports:
       - "3000:3000"
