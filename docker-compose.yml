@@ -1,0 +1,13 @@
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+      BACKEND_URL: ${BACKEND_URL:?Defina BACKEND_URL nas variaveis do Dokploy}
+    ports:
+      - "3000:3000"
