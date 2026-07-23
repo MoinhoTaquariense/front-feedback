@@ -1,0 +1,19 @@
+.selos-mobile-hide {
+  display: block;
+}
+
+@media (max-width: 600px) {
+  .selos-mobile-hide {
+    display: none !important;
+  }
+}
+
+.header-mobile-hide {
+  display: block;
+}
+
+@media (max-width: 600px) {
+  .header-mobile-hide {
+    display: none !important;
+  }
+}
