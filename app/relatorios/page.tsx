@@ -115,7 +115,7 @@ function textoVariacao(variacao?: Variacao, unidade = "") {
 }
 
 export default function RelatoriosPage() {
-  const { token } = useAuth();
+  const { token, logout } = useAuth();
   const [filtros, setFiltros] = useState<Filtros>(initialFilters);
   const [resumo, setResumo] = useState<Resumo | null>(null);
   const [insights, setInsights] = useState<Insights | null>(null);
@@ -147,11 +147,15 @@ export default function RelatoriosPage() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await response.json().catch(() => ({}));
+      if (response.status === 401) {
+        logout();
+        throw new Error("Sua sessão expirou. Entre novamente.");
+      }
       if (!response.ok)
         throw new Error(data.message || "Erro ao consultar relatório");
       return data;
     },
-    [token],
+    [logout, token],
   );
   const query = useMemo(() => {
     const params = new URLSearchParams();
