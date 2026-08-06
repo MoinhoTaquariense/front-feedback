@@ -422,7 +422,14 @@ export default function RelatoriosPage() {
               >
                 <ArrowDownToLine className="size-4" />
                 Exportar CSV
-              </button>
+              </button>              {filtros.campanhaId && (
+                <Link
+                  href={`/relatorios/campanha/${filtros.campanhaId}`}
+                  className={`${button} bg-[#5d3a2e] text-white hover:bg-[#4e3026]`}
+                >
+                  Relatório completo
+                </Link>
+              )}
             </div>
           </div>
         </section>
