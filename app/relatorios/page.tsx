@@ -141,6 +141,7 @@ export default function RelatoriosPage() {
   >("DIA");
   const [erro, setErro] = useState("");
   const [loading, setLoading] = useState(false);
+  const [exportando, setExportando] = useState(false);
   const api = useCallback(
     async (path: string) => {
       const response = await fetch(`/api/backend${path}`, {
@@ -225,21 +226,32 @@ export default function RelatoriosPage() {
     void carregar();
   }, [carregar]);
   async function exportar() {
+    if (exportando) return;
+    setExportando(true);
+    setErro("");
     try {
       const response = await fetch(
         `/api/backend/relatorios/exportacao${query ? `?${query}` : ""}`,
         { headers: { Authorization: `Bearer ${token}` } },
       );
-      if (!response.ok) throw new Error("Não foi possível exportar");
+      if (response.status === 401) {
+        logout();
+        throw new Error("Sua sessão expirou. Entre novamente.");
+      }
+      if (!response.ok) throw new Error("Não foi possível gerar o Excel. Tente novamente.");
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = "relatorio-avaliacoes.csv";
+      link.download = "relatorio-avaliacoes.xlsx";
+      document.body.appendChild(link);
       link.click();
-      URL.revokeObjectURL(url);
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (error) {
       setErro(error instanceof Error ? error.message : "Erro ao exportar");
+    } finally {
+      setExportando(false);
     }
   }
   async function salvarMeta(event: React.FormEvent<HTMLFormElement>) {
@@ -418,10 +430,12 @@ export default function RelatoriosPage() {
               </button>
               <button
                 onClick={() => void exportar()}
-                className={`${button} bg-[#5d3a2e] text-white hover:bg-[#4e3026]`}
+                disabled={exportando}
+                aria-busy={exportando}
+                className={`${button} bg-[#5d3a2e] text-white hover:bg-[#4e3026] disabled:cursor-wait disabled:opacity-60`}
               >
                 <ArrowDownToLine className="size-4" />
-                Exportar CSV
+                {exportando ? "Gerando Excel…" : "Exportar Excel"}
               </button>              {filtros.campanhaId && (
                 <Link
                   href={`/relatorios/campanha/${filtros.campanhaId}`}
