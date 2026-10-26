@@ -250,7 +250,7 @@ export default function QuestionariosPage() {
     if (!selecionado || !versao) return;
     try {
       const lista = opcoes
-        .split(",")
+        .split(";")
         .map((item) => item.trim())
         .filter(Boolean);
       await api(
@@ -921,11 +921,11 @@ export default function QuestionariosPage() {
                                 onChange={(event) =>
                                   setOpcoes(event.target.value)
                                 }
-                                placeholder="Ex.: Ótimo, Bom, Regular"
+                                placeholder="Ex.: Rápido, claro e objetivo; Bom; Regular"
                                 className={input}
                               />
                               <span className="mt-1 block text-xs font-normal text-[#8a92a4]">
-                                Separe cada opção por vírgula.
+                                Separe cada opção por ponto e vírgula (;). Vírgulas podem fazer parte do texto da opção.
                               </span>
                             </label>
                           )}
