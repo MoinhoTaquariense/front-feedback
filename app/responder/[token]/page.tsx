@@ -40,6 +40,9 @@ type Formulario = {
   perguntas: Pergunta[];
 };
 type Valores = Record<number, string | string[]>;
+type DetalhesOutro = Record<number, string>;
+
+const opcaoOutro = (opcao: Opcao) => /^outro\s*:?$/i.test(opcao.rotulo.trim());
 
 const SEGUNDOS_POR_TIPO: Record<string, number> = {
   ESCALA_5: 10,
@@ -124,6 +127,7 @@ export default function ResponderPage() {
   const token = String(params.token || "");
   const [formulario, setFormulario] = useState<Formulario | null>(null);
   const [valores, setValores] = useState<Valores>({});
+  const [detalhesOutro, setDetalhesOutro] = useState<DetalhesOutro>({});
   const [currentIndex, setCurrentIndex] = useState(0);
   const [participacaoId, setParticipacaoId] = useState("");
   const [loadingMessage, setLoadingMessage] = useState(
@@ -167,8 +171,11 @@ export default function ResponderPage() {
         `rascunho-avaliacao:${token}`,
       );
       if (draft) setValores(JSON.parse(draft));
+      const detalhes = window.sessionStorage.getItem(`rascunho-outro:${token}`);
+      if (detalhes) setDetalhesOutro(JSON.parse(detalhes));
     } catch {
       window.sessionStorage.removeItem(`rascunho-avaliacao:${token}`);
+      window.sessionStorage.removeItem(`rascunho-outro:${token}`);
     }
   }, [token]);
   useEffect(() => {
@@ -178,6 +185,10 @@ export default function ResponderPage() {
         JSON.stringify(valores),
       );
   }, [completed, formulario, token, valores]);
+  useEffect(() => {
+    if (token && formulario && !completed)
+      window.sessionStorage.setItem(`rascunho-outro:${token}`, JSON.stringify(detalhesOutro));
+  }, [completed, detalhesOutro, formulario, token]);
 
   const perguntasVisiveis = useMemo(
     () =>
@@ -207,18 +218,32 @@ export default function ResponderPage() {
     setValores((atuais) => ({ ...atuais, [id]: value }));
     setFieldError("");
   }
+  function atualizarOutro(id: number, value: string) {
+    setDetalhesOutro((atuais) => ({ ...atuais, [id]: value }));
+    setFieldError("");
+  }
   function valido(perguntaAtual: Pergunta) {
-    if (!perguntaAtual.obrigatoria || perguntaAtual.tipo === "INSTRUCAO")
-      return true;
     const valor = valorAtual(perguntaAtual.id);
+    const outro = perguntaAtual.opcoes.find(
+      (opcao) => opcaoOutro(opcao) && (Array.isArray(valor) ? valor.includes(String(opcao.id)) : valor === String(opcao.id)),
+    );
+    if (outro && !detalhesOutro[perguntaAtual.id]?.trim()) return false;
+    if (!perguntaAtual.obrigatoria || perguntaAtual.tipo === "INSTRUCAO") return true;
     return Array.isArray(valor) ? valor.length > 0 : Boolean(valor?.trim());
+  }
+  function mensagemCampo(perguntaAtual: Pergunta) {
+    const valor = valorAtual(perguntaAtual.id);
+    const selecionouOutro = perguntaAtual.opcoes.some(
+      (opcao) => opcaoOutro(opcao) && (Array.isArray(valor) ? valor.includes(String(opcao.id)) : valor === String(opcao.id)),
+    );
+    return selecionouOutro && !detalhesOutro[perguntaAtual.id]?.trim()
+      ? "Descreva sua resposta no campo Outro para continuar."
+      : "Esta pergunta é obrigatória. Selecione ou escreva uma resposta para continuar.";
   }
   function avancar() {
     if (!pergunta) return;
     if (!valido(pergunta)) {
-      setFieldError(
-        "Esta pergunta e obrigatoria. Selecione ou escreva uma resposta para continuar.",
-      );
+      setFieldError(mensagemCampo(pergunta));
       return;
     }
     setCurrentIndex((indice) => Math.min(indice + 1, totalPerguntas - 1));
@@ -227,9 +252,7 @@ export default function ResponderPage() {
   async function enviar() {
     if (!formulario || !participacaoId) return;
     if (pergunta && !valido(pergunta)) {
-      setFieldError(
-        "Esta pergunta e obrigatoria. Selecione ou escreva uma resposta para enviar.",
-      );
+      setFieldError(mensagemCampo(pergunta));
       return;
     }
     setSending(true);
@@ -245,6 +268,7 @@ export default function ResponderPage() {
             respostas: Object.entries(valores).map(([perguntaId, valor]) => ({
               perguntaId: Number(perguntaId),
               valor,
+              textoOutro: detalhesOutro[Number(perguntaId)]?.trim(),
             })),
           }),
         },
@@ -252,6 +276,7 @@ export default function ResponderPage() {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.message);
       window.sessionStorage.removeItem(`rascunho-avaliacao:${token}`);
+      window.sessionStorage.removeItem(`rascunho-outro:${token}`);
       setCompleted(true);
     } catch (sendError) {
       setError(
@@ -373,6 +398,8 @@ export default function ResponderPage() {
                   pergunta={pergunta}
                   valor={valorAtual(pergunta.id)}
                   onChange={(value) => atualizar(pergunta.id, value)}
+                  textoOutro={detalhesOutro[pergunta.id] || ""}
+                  onOutroChange={(value) => atualizarOutro(pergunta.id, value)}
                 />
               )}
             </div>
@@ -441,10 +468,14 @@ function QuestionInput({
   pergunta,
   valor,
   onChange,
+  textoOutro,
+  onOutroChange,
 }: {
   pergunta: Pergunta;
   valor: string | string[] | undefined;
   onChange: (value: string | string[]) => void;
+  textoOutro: string;
+  onOutroChange: (value: string) => void;
 }) {
   const escala = pergunta.tipo === "ESCALA_5" || pergunta.tipo === "NPS";
   const numeros = Array.from(
@@ -498,6 +529,9 @@ function QuestionInput({
               {opcao.rotulo}
             </button>
           ))}
+          {pergunta.opcoes.some((opcao) => opcaoOutro(opcao) && String(valor || "") === String(opcao.id)) && (
+            <OutroInput value={textoOutro} onChange={onOutroChange} />
+          )}
         </div>
       ) : pergunta.tipo === "MULTIPLA" ? (
         <div className="mt-6 space-y-2">
@@ -526,6 +560,9 @@ function QuestionInput({
               </button>
             );
           })}
+          {pergunta.opcoes.some((opcao) => opcaoOutro(opcao) && Array.isArray(valor) && valor.includes(String(opcao.id))) && (
+            <OutroInput value={textoOutro} onChange={onOutroChange} />
+          )}
         </div>
       ) : (
         <textarea
@@ -539,6 +576,28 @@ function QuestionInput({
           className="mt-6 min-h-32 w-full rounded-2xl border border-[#d9deea] bg-white px-4 py-3 text-sm leading-6 text-[#172033] outline-none transition placeholder:text-[#98a2b3] focus:border-[#5d3a2e] focus:ring-4 focus:ring-[#c99176]/20"
         />
       )}
+    </div>
+  );
+}
+
+function OutroInput({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  return (
+    <div className="rounded-xl border border-[#e6d2c8] bg-[#fff8f4] p-4">
+      <label htmlFor="descricao-outro" className="mb-2 block text-sm font-semibold text-[#5d3a2e]">
+        Descreva sua resposta <span aria-hidden="true">*</span>
+      </label>
+      <textarea
+        id="descricao-outro"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        maxLength={1000}
+        rows={3}
+        required
+        aria-required="true"
+        placeholder="Escreva aqui sua resposta..."
+        className="w-full resize-y rounded-xl border border-[#d9deea] bg-white px-4 py-3 text-sm leading-6 text-[#172033] outline-none placeholder:text-[#98a2b3] focus:border-[#5d3a2e] focus:ring-4 focus:ring-[#c99176]/20"
+      />
+      <p className="mt-1 text-right text-xs text-[#8a92a4]">{value.length}/1000 caracteres</p>
     </div>
   );
 }
