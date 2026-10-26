@@ -23,7 +23,8 @@ import {
 } from "@/components/questionnaire-templates";
 import { useAuth } from "@/components/auth-context";
 
-type Opcao = { id: number; rotulo: string };
+type Opcao = { id: number; rotulo: string; ordem: number };
+type OpcaoEdicao = { id?: number; rotulo: string; chave: string };
 type Condicao = {
   perguntaId: number;
   operador: "IGUAL" | "DIFERENTE" | "MAIOR_IGUAL" | "MENOR_IGUAL";
@@ -82,6 +83,8 @@ export default function QuestionariosPage() {
   const [preview, setPreview] = useState(false);
   const [editandoId, setEditandoId] = useState<number | null>(null);
   const [textoEdicao, setTextoEdicao] = useState("");
+  const [tipoEdicao, setTipoEdicao] = useState("ESCALA_5");
+  const [opcoesEdicao, setOpcoesEdicao] = useState<OpcaoEdicao[]>([]);
   const [obrigatoriaEdicao, setObrigatoriaEdicao] = useState(false);
   const [condicaoEdicao, setCondicaoEdicao] = useState<Condicao | null>(null);
   const selecionado = useMemo(
@@ -316,11 +319,18 @@ export default function QuestionariosPage() {
   function iniciarEdicao(pergunta: Pergunta) {
     setEditandoId(pergunta.id);
     setTextoEdicao(pergunta.texto);
+    setTipoEdicao(pergunta.tipo);
+    setOpcoesEdicao([...pergunta.opcoes].sort((a, b) => a.ordem - b.ordem).map((opcao) => ({ id: opcao.id, rotulo: opcao.rotulo, chave: String(opcao.id) })));
     setObrigatoriaEdicao(pergunta.obrigatoria);
     setCondicaoEdicao(pergunta.condicao ?? null);
   }
   async function salvarEdicao() {
     if (!selecionado || !versao || !editandoId) return;
+    const escolha = tipoEdicao === "UNICA" || tipoEdicao === "MULTIPLA";
+    if (escolha && (opcoesEdicao.length < 2 || opcoesEdicao.some((opcao) => !opcao.rotulo.trim()))) {
+      setNotice("Informe ao menos duas alternativas preenchidas para esta pergunta.");
+      return;
+    }
     try {
       await api(
         `/questionarios/${selecionado.id}/versoes/${versao.id}/perguntas/${editandoId}`,
@@ -328,7 +338,9 @@ export default function QuestionariosPage() {
           method: "PATCH",
           body: JSON.stringify({
             texto: textoEdicao,
-            obrigatoria: obrigatoriaEdicao,
+            tipo: tipoEdicao,
+            opcoes: escolha ? opcoesEdicao.map(({ id, rotulo }) => ({ id, rotulo: rotulo.trim() })) : [],
+            obrigatoria: tipoEdicao === "INSTRUCAO" ? false : obrigatoriaEdicao,
             condicao: condicaoEdicao,
           }),
         },
@@ -611,14 +623,51 @@ export default function QuestionariosPage() {
                                 <div className="min-w-0 flex-1">
                                   {editandoId === pergunta.id ? (
                                     <div>
+                                      <label className="block text-sm font-medium text-[#344054]">
+                                        Tipo de resposta
+                                        <select
+                                          value={tipoEdicao}
+                                          onChange={(event) => {
+                                            const novoTipo = event.target.value;
+                                            setTipoEdicao(novoTipo);
+                                            if (["UNICA", "MULTIPLA"].includes(novoTipo) && !opcoesEdicao.length)
+                                              setOpcoesEdicao([0, 1].map(() => ({ chave: crypto.randomUUID(), rotulo: "" })));
+                                          }}
+                                          className={input}
+                                        >
+                                          {tipos.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                                        </select>
+                                      </label>
                                       <textarea
                                         value={textoEdicao}
                                         onChange={(event) =>
                                           setTextoEdicao(event.target.value)
                                         }
-                                        className="min-h-20 w-full rounded-xl border border-[#d9deea] px-3 py-2 text-sm outline-none focus:border-[#5d3a2e]"
+                                        aria-label="Texto da pergunta"
+                                        className="mt-3 min-h-20 w-full rounded-xl border border-[#d9deea] px-3 py-2 text-sm outline-none focus:border-[#5d3a2e]"
                                       />
-                                      <label className="mt-3 flex items-center gap-2 text-sm font-medium text-[#344054]">
+                                      {["UNICA", "MULTIPLA"].includes(tipoEdicao) && (
+                                        <div className="mt-4 space-y-2">
+                                          <p className="text-sm font-semibold text-[#344054]">Alternativas</p>
+                                          {opcoesEdicao.map((opcao, index) => (
+                                            <div key={opcao.chave} className="flex items-center gap-2">
+                                              <input
+                                                value={opcao.rotulo}
+                                                onChange={(event) => setOpcoesEdicao((atuais) => atuais.map((item, posicao) => posicao === index ? { ...item, rotulo: event.target.value } : item))}
+                                                maxLength={255}
+                                                aria-label={`Alternativa ${index + 1}`}
+                                                className={`${input} mt-0 min-w-0 flex-1`}
+                                              />
+                                              <button type="button" disabled={index === 0} onClick={() => setOpcoesEdicao((atuais) => { const copia = [...atuais]; [copia[index - 1], copia[index]] = [copia[index], copia[index - 1]]; return copia; })} aria-label={`Mover alternativa ${index + 1} para cima`} className="rounded-lg p-2 text-[#687086] hover:bg-[#f3f5f8] disabled:opacity-30"><ChevronUp className="size-4" /></button>
+                                              <button type="button" disabled={index === opcoesEdicao.length - 1} onClick={() => setOpcoesEdicao((atuais) => { const copia = [...atuais]; [copia[index], copia[index + 1]] = [copia[index + 1], copia[index]]; return copia; })} aria-label={`Mover alternativa ${index + 1} para baixo`} className="rounded-lg p-2 text-[#687086] hover:bg-[#f3f5f8] disabled:opacity-30"><ChevronDown className="size-4" /></button>
+                                              <button type="button" onClick={() => setOpcoesEdicao((atuais) => atuais.filter((_, posicao) => posicao !== index))} aria-label={`Remover alternativa ${index + 1}`} className="rounded-lg p-2 text-[#687086] hover:bg-[#f3f5f8]"><Trash2 className="size-4" /></button>
+                                            </div>
+                                          ))}
+                                          <button type="button" onClick={() => setOpcoesEdicao((atuais) => [...atuais, { chave: crypto.randomUUID(), rotulo: "" }])} className="inline-flex items-center gap-1 text-sm font-semibold text-[#5d3a2e]"><Plus className="size-4" /> Adicionar alternativa</button>
+                                          <p className="text-xs text-[#8a92a4]">As alternativas mantidas preservam as condições ligadas a elas.</p>
+                                        </div>
+                                      )}
+                                      {tipoEdicao !== "INSTRUCAO" && <label className="mt-3 flex items-center gap-2 text-sm font-medium text-[#344054]">
                                         <input
                                           type="checkbox"
                                           checked={obrigatoriaEdicao}
@@ -630,7 +679,7 @@ export default function QuestionariosPage() {
                                           className="size-4 accent-[#5d3a2e]"
                                         />
                                         Resposta obrigatória
-                                      </label>
+                                      </label>}
                                       <div className="mt-4 rounded-xl border border-[#e6e9f0] bg-[#fafbfe] p-3">
                                         <p className="text-sm font-semibold text-[#344054]">
                                           Exibir esta pergunta somente se
