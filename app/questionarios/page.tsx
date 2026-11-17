@@ -22,6 +22,7 @@ import {
   type QuestionnaireTemplate,
 } from "@/components/questionnaire-templates";
 import { useAuth } from "@/components/auth-context";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 type Opcao = { id: number; rotulo: string; ordem: number };
 type OpcaoEdicao = { id?: number; rotulo: string; chave: string };
@@ -80,6 +81,10 @@ export default function QuestionariosPage() {
   const [obrigatoria, setObrigatoria] = useState(true);
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState("");
+  const [origemDuplicacao, setOrigemDuplicacao] = useState<{ id: number; nome: string; versaoId: number; numero: number } | null>(null);
+  const [nomeDuplicacao, setNomeDuplicacao] = useState("");
+  const [erroDuplicacao, setErroDuplicacao] = useState("");
+  const [duplicando, setDuplicando] = useState(false);
   const [preview, setPreview] = useState(false);
   const [editandoId, setEditandoId] = useState<number | null>(null);
   const [textoEdicao, setTextoEdicao] = useState("");
@@ -224,6 +229,27 @@ export default function QuestionariosPage() {
   async function selecionar(id: number) {
     setSelecionadoId(id);
     await carregar(id);
+  }
+  async function duplicarQuestionario(event: FormEvent) {
+    event.preventDefault();
+    if (!origemDuplicacao || duplicando || !nomeDuplicacao.trim()) return;
+    setDuplicando(true);
+    setErroDuplicacao("");
+    try {
+      const data = await api(`/questionarios/${origemDuplicacao.id}/duplicar`, {
+        method: "POST",
+        body: JSON.stringify({ nome: nomeDuplicacao.trim(), versaoId: origemDuplicacao.versaoId }),
+      });
+      setOrigemDuplicacao(null);
+      setPreview(false);
+      setEditandoId(null);
+      setNotice(`Questionário "${data.data.questionario.nome}" duplicado em rascunho.`);
+      await carregar(data.data.questionario.id);
+    } catch (error) {
+      setErroDuplicacao(error instanceof Error ? error.message : "Erro ao duplicar questionário");
+    } finally {
+      setDuplicando(false);
+    }
   }
   async function excluirQuestionario() {
     if (
@@ -395,6 +421,29 @@ export default function QuestionariosPage() {
 
   return (
     <AppShell>
+      <Dialog open={origemDuplicacao !== null} onOpenChange={(open) => { if (!open && !duplicando) setOrigemDuplicacao(null); }}>
+        <DialogContent className="rounded-2xl bg-white" showCloseButton={!duplicando}>
+          <DialogHeader>
+            <DialogTitle>Duplicar questionário</DialogTitle>
+            <DialogDescription>
+              A versão {origemDuplicacao?.numero} de &quot;{origemDuplicacao?.nome}&quot; será copiada para um novo questionário em rascunho, com todas as perguntas e configurações.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={duplicarQuestionario} className="space-y-5">
+            <label htmlFor="nome-duplicacao" className="block text-sm font-medium text-[#344054]">
+              Novo nome
+              <input id="nome-duplicacao" autoFocus required maxLength={150} value={nomeDuplicacao} onChange={(event) => setNomeDuplicacao(event.target.value)} disabled={duplicando} className={input} />
+            </label>
+            {erroDuplicacao && <p role="alert" className="text-sm text-red-700">{erroDuplicacao}</p>}
+            <div className="flex justify-end gap-2">
+              <button type="button" disabled={duplicando} onClick={() => setOrigemDuplicacao(null)} className={`${button} border border-[#d9deea] text-[#344054] disabled:opacity-50`}>Cancelar</button>
+              <button type="submit" disabled={duplicando || !nomeDuplicacao.trim()} className={`${button} bg-[#5d3a2e] text-white hover:bg-[#4e3026] disabled:opacity-50`}>
+                <Copy className="size-4" />{duplicando ? "Duplicando..." : "Duplicar"}
+              </button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
       <div className="mx-auto max-w-7xl space-y-7">
         <section className="rounded-3xl border border-[#e6e9f0] bg-white p-6 shadow-[0_12px_32px_rgba(23,32,51,0.05)] lg:p-8">
           <p className="eyebrow">Biblioteca de pesquisas</p>
@@ -576,6 +625,18 @@ export default function QuestionariosPage() {
                         Publicar
                       </button>
                     )}
+                    <button
+                      disabled={loading || duplicando}
+                      onClick={() => {
+                        setOrigemDuplicacao({ id: selecionado.id, nome: selecionado.nome, versaoId: versao.id, numero: versao.numero });
+                        setNomeDuplicacao("");
+                        setErroDuplicacao("");
+                      }}
+                      className={`${button} border border-[#d9deea] bg-white text-[#344054] hover:bg-[#f3f5f8] disabled:opacity-50`}
+                    >
+                      <Copy className="size-4" />
+                      Duplicar
+                    </button>
                     <button
                       onClick={() => void excluirQuestionario()}
                       className={`${button} border border-red-200 bg-white text-red-700 hover:bg-red-50`}
