@@ -32,6 +32,7 @@ type Campanha = {
   status: string;
   encerraEm?: string;
   anonima: boolean;
+  respostaUnicaPorCpf?: boolean;
   aceitaLinkPublico?: boolean;
   versao?: Versao;
   setores?: Setor[];
@@ -55,6 +56,7 @@ export default function CampanhasPage() {
   const [inicio, setInicio] = useState("");
   const [fim, setFim] = useState("");
   const [anonima, setAnonima] = useState(true);
+  const [respostaUnicaPorCpf, setRespostaUnicaPorCpf] = useState(false);
   const [aceitaLinkPublico, setAceitaLinkPublico] = useState(true);
   const [aceitaLinkIndividual, setAceitaLinkIndividual] = useState(false);
   const [limitePublico, setLimitePublico] = useState("0");
@@ -162,6 +164,7 @@ export default function CampanhasPage() {
           iniciaEm: inicio || null,
           encerraEm: fim || null,
           anonima,
+          respostaUnicaPorCpf: anonima ? false : respostaUnicaPorCpf,
           aceitaLinkPublico,
           aceitaLinkIndividual,
           limiteRespostasPublico: aceitaLinkPublico
@@ -175,6 +178,8 @@ export default function CampanhasPage() {
       setSetorIds([]);
       setInicio("");
       setFim("");
+      setAnonima(true);
+      setRespostaUnicaPorCpf(false);
       setAceitaLinkPublico(true);
       setAceitaLinkIndividual(false);
       setLimitePublico("0");
@@ -472,16 +477,54 @@ export default function CampanhasPage() {
                   <input
                     type="checkbox"
                     checked={anonima}
-                    onChange={(event) => setAnonima(event.target.checked)}
+                    onChange={(event) => {
+                      const checked = event.target.checked;
+                      setAnonima(checked);
+                      if (checked) setRespostaUnicaPorCpf(false);
+                    }}
                     className="mt-0.5 size-4 accent-[#5d3a2e]"
                   />
                   <span>
                     <strong className="block">Coleta anônima</strong>
                     <span className="mt-1 block text-[#687086]">
-                      Não associe a resposta à identidade do participante.
+                      {anonima
+                        ? "Não solicita CPF nem associa a resposta à identidade do participante."
+                        : "Desmarcada: o participante deverá informar um CPF válido antes de responder."}
                     </span>
                   </span>
                 </label>
+                {!anonima && (
+                  <div className="space-y-3 rounded-2xl border border-[#ead8ce] bg-[#fff8f4] p-4 text-sm text-[#5d3a2e] md:col-span-2">
+                    <div>
+                      <p className="font-semibold text-[#5d3a2e]">
+                        Identificação obrigatória por CPF
+                      </p>
+                      <p className="mt-1 text-[#704435]">
+                        Ao desmarcar a coleta anônima, o participante precisará
+                        informar um CPF válido para iniciar e enviar a pesquisa.
+                      </p>
+                    </div>
+                    <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#e6d2c8] bg-white p-3.5 text-sm text-[#344054]">
+                      <input
+                        type="checkbox"
+                        checked={respostaUnicaPorCpf}
+                        onChange={(event) =>
+                          setRespostaUnicaPorCpf(event.target.checked)
+                        }
+                        className="mt-0.5 size-4 accent-[#5d3a2e]"
+                      />
+                      <span>
+                        <strong className="block text-[#172033]">
+                          Resposta única por CPF
+                        </strong>
+                        <span className="mt-1 block text-[#687086]">
+                          Não aceita mais de uma resposta com o mesmo CPF nesta
+                          campanha.
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+                )}
                 <label className="text-sm font-medium text-[#344054] md:col-span-2">
                   Mensagem do convite
                   <textarea
@@ -538,9 +581,21 @@ export default function CampanhasPage() {
                   <Resumo
                     label="Privacidade"
                     value={
-                      anonima ? "Resposta anônima" : "Resposta identificada"
+                      anonima
+                        ? "Coleta anônima"
+                        : "Identificada por CPF (obrigatório)"
                     }
                   />
+                  {!anonima && (
+                    <Resumo
+                      label="Limite por CPF"
+                      value={
+                        respostaUnicaPorCpf
+                          ? "Resposta única (não aceita o mesmo CPF)"
+                          : "Permite múltiplas respostas do mesmo CPF"
+                      }
+                    />
+                  )}
                 </dl>
               </div>
             )}
@@ -639,7 +694,12 @@ export default function CampanhasPage() {
                     </h3>
                     <p className="mt-1 text-sm text-[#687086]">
                       {campanha.versao?.questionario?.nome || "Questionário"} -
-                      versão {campanha.versao?.numero || "-"}
+                      versão {campanha.versao?.numero || "-"} ·{" "}
+                      {campanha.anonima
+                        ? "anônima"
+                        : campanha.respostaUnicaPorCpf
+                          ? "CPF obrigatório (resposta única)"
+                          : "CPF obrigatório"}
                     </p>
                     {campanha.encerraEm && (
                       <p className="mt-2 flex items-center gap-1.5 text-xs text-[#8a92a4]">

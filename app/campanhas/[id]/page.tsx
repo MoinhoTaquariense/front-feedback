@@ -29,6 +29,7 @@ type Campanha = {
   nome: string;
   status: string;
   anonima: boolean;
+  respostaUnicaPorCpf?: boolean;
   aceitaLinkPublico: boolean;
   aceitaLinkIndividual: boolean;
   encerraEm?: string;
@@ -183,8 +184,10 @@ export default function CampanhaDetalhePage() {
                 {campanha.versao?.questionario?.nome} · versão{" "}
                 {campanha.versao?.numero} ·{" "}
                 {campanha.anonima
-                  ? "resposta anônima"
-                  : "resposta identificada"}
+                  ? "coleta anônima"
+                  : campanha.respostaUnicaPorCpf
+                    ? "identificada por CPF · resposta única por CPF"
+                    : "identificada por CPF"}
               </p>
               <p className="mt-2 text-sm text-[#8a92a4]">
                 Setores:{" "}

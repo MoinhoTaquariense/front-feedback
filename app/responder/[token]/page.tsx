@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
   CheckCircle2,
@@ -10,8 +10,10 @@ import {
   HeartHandshake,
   LockKeyhole,
   Send,
+  ShieldCheck,
 } from "lucide-react";
 import Image from "next/image";
+import { mascararCpf, validarCpf } from "@/lib/cpf";
 
 type Opcao = { id: number; valor: string; rotulo: string };
 type Condicao = {
@@ -35,7 +37,13 @@ type Pergunta = {
   opcoes: Opcao[];
 };
 type Formulario = {
-  campanha: { nome: string; instrucoes?: string };
+  campanha: {
+    id?: number;
+    nome: string;
+    anonima?: boolean;
+    respostaUnicaPorCpf?: boolean;
+    instrucoes?: string;
+  };
   questionario: { nome: string; versao: number };
   perguntas: Pergunta[];
 };
@@ -130,6 +138,10 @@ export default function ResponderPage() {
   const [detalhesOutro, setDetalhesOutro] = useState<DetalhesOutro>({});
   const [currentIndex, setCurrentIndex] = useState(0);
   const [participacaoId, setParticipacaoId] = useState("");
+  const [cpf, setCpf] = useState("");
+  const [cpfConfirmado, setCpfConfirmado] = useState(false);
+  const [validandoCpf, setValidandoCpf] = useState(false);
+  const [cpfError, setCpfError] = useState("");
   const [loadingMessage, setLoadingMessage] = useState(
     "Carregando pesquisa...",
   );
@@ -173,9 +185,12 @@ export default function ResponderPage() {
       if (draft) setValores(JSON.parse(draft));
       const detalhes = window.sessionStorage.getItem(`rascunho-outro:${token}`);
       if (detalhes) setDetalhesOutro(JSON.parse(detalhes));
+      const cpfSalvo = window.sessionStorage.getItem(`rascunho-cpf:${token}`);
+      if (cpfSalvo) setCpf(mascararCpf(cpfSalvo));
     } catch {
       window.sessionStorage.removeItem(`rascunho-avaliacao:${token}`);
       window.sessionStorage.removeItem(`rascunho-outro:${token}`);
+      window.sessionStorage.removeItem(`rascunho-cpf:${token}`);
     }
   }, [token]);
   useEffect(() => {
@@ -189,6 +204,10 @@ export default function ResponderPage() {
     if (token && formulario && !completed)
       window.sessionStorage.setItem(`rascunho-outro:${token}`, JSON.stringify(detalhesOutro));
   }, [completed, detalhesOutro, formulario, token]);
+  useEffect(() => {
+    if (token && formulario && !completed && cpf)
+      window.sessionStorage.setItem(`rascunho-cpf:${token}`, cpf);
+  }, [completed, cpf, formulario, token]);
 
   const perguntasVisiveis = useMemo(
     () =>
@@ -249,8 +268,51 @@ export default function ResponderPage() {
     setCurrentIndex((indice) => Math.min(indice + 1, totalPerguntas - 1));
     setFieldError("");
   }
+  const exigeCpf = formulario?.campanha.anonima === false;
+
+  async function confirmarCpf(event?: FormEvent) {
+    event?.preventDefault();
+    if (!validarCpf(cpf)) {
+      setCpfError("Informe um CPF válido para continuar.");
+      return;
+    }
+    setValidandoCpf(true);
+    setCpfError("");
+    try {
+      const response = await fetch(
+        `/api/backend/responder/${token}/validar-cpf`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cpf }),
+        },
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          data.message || "Não foi possível validar o CPF informado.",
+        );
+      }
+      setCpfConfirmado(true);
+    } catch (validationError) {
+      setCpfError(
+        validationError instanceof Error
+          ? validationError.message
+          : "Não foi possível validar o CPF informado.",
+      );
+    } finally {
+      setValidandoCpf(false);
+    }
+  }
+
   async function enviar() {
-    if (!formulario || !participacaoId) return;
+    if (!formulario) return;
+    if (!exigeCpf && !participacaoId) return;
+    if (exigeCpf && !validarCpf(cpf)) {
+      setCpfConfirmado(false);
+      setCpfError("Informe um CPF válido para enviar sua resposta.");
+      return;
+    }
     if (pergunta && !valido(pergunta)) {
       setFieldError(mensagemCampo(pergunta));
       return;
@@ -265,6 +327,7 @@ export default function ResponderPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             participacaoId,
+            cpf: exigeCpf ? cpf : undefined,
             respostas: Object.entries(valores).map(([perguntaId, valor]) => ({
               perguntaId: Number(perguntaId),
               valor,
@@ -277,6 +340,7 @@ export default function ResponderPage() {
       if (!response.ok) throw new Error(data.message);
       window.sessionStorage.removeItem(`rascunho-avaliacao:${token}`);
       window.sessionStorage.removeItem(`rascunho-outro:${token}`);
+      window.sessionStorage.removeItem(`rascunho-cpf:${token}`);
       setCompleted(true);
     } catch (sendError) {
       setError(
@@ -325,6 +389,109 @@ export default function ResponderPage() {
       />
     );
 
+  if (exigeCpf && !cpfConfirmado) {
+    return (
+      <main className="min-h-screen bg-[#f6f7fb] px-4 py-5 sm:px-6 sm:py-8">
+        <div className="mx-auto max-w-2xl">
+          <header className="mb-5 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex size-10 items-center justify-center rounded-xl bg-white shadow-sm ring-1 ring-[#e6e9f0]">
+                <Image
+                  src="/images/logoMotMenor.png"
+                  alt="Motasa"
+                  width={28}
+                  height={28}
+                  className="object-contain"
+                />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-[#172033]">Motasa</p>
+                <p className="text-xs text-[#8a92a4]">Pesquisa de experiencia</p>
+              </div>
+            </div>
+            <span className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-[#687086] shadow-sm ring-1 ring-[#e6e9f0]">
+              Identificação
+            </span>
+          </header>
+          <section className="overflow-hidden rounded-3xl border border-[#e6e9f0] bg-white shadow-[0_16px_40px_rgba(23,32,51,0.08)]">
+            <div className="h-1.5 bg-[#edf0f5]">
+              <div className="h-full w-12 rounded-r-full bg-[#5d3a2e]" />
+            </div>
+            <form onSubmit={(event) => void confirmarCpf(event)} className="p-6 sm:p-9">
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#8b5a46]">
+                {formulario.campanha.nome}
+              </p>
+              <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[#172033] sm:text-3xl">
+                {formulario.questionario.nome}
+              </h1>
+              <div className="mt-4 flex flex-wrap gap-3 text-sm text-[#687086]">
+                <span className="inline-flex items-center gap-1.5">
+                  <Clock3 className="size-4 text-[#8b5a46]" />
+                  Cerca de {duracao} min
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <ShieldCheck className="size-4 text-[#8b5a46]" />
+                  {formulario.campanha.respostaUnicaPorCpf
+                    ? "CPF obrigatório · resposta única"
+                    : "Identificação por CPF"}
+                </span>
+              </div>
+              <p className="mt-5 rounded-2xl bg-[#fff8f4] p-4 text-sm leading-6 text-[#704435]">
+                {formulario.campanha.respostaUnicaPorCpf
+                  ? "Informe seu CPF para iniciar a pesquisa. Esta campanha permite apenas uma resposta por CPF."
+                  : "Informe seu CPF para se identificar e iniciar a pesquisa."}
+              </p>
+              <div className="mt-6">
+                <label
+                  htmlFor="participante-cpf"
+                  className="block text-sm font-semibold text-[#344054]"
+                >
+                  CPF <span aria-hidden="true">*</span>
+                </label>
+                <input
+                  id="participante-cpf"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  required
+                  maxLength={14}
+                  value={cpf}
+                  onChange={(event) => {
+                    setCpf(mascararCpf(event.target.value));
+                    setCpfError("");
+                  }}
+                  placeholder="000.000.000-00"
+                  className="mt-2 h-12 w-full rounded-xl border border-[#d9deea] bg-white px-4 text-base tracking-wide text-[#172033] outline-none transition placeholder:text-[#98a2b3] focus:border-[#5d3a2e] focus:ring-4 focus:ring-[#c99176]/20"
+                />
+              </div>
+              {cpfError && (
+                <p
+                  role="alert"
+                  className="mt-4 rounded-xl bg-red-50 px-3 py-2.5 text-sm text-red-700"
+                >
+                  {cpfError}
+                </p>
+              )}
+              <footer className="mt-8 flex justify-end border-t border-[#edf0f5] pt-6">
+                <button
+                  type="submit"
+                  disabled={validandoCpf}
+                  className="inline-flex items-center gap-2 rounded-xl bg-[#5d3a2e] px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#4e3026] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {validandoCpf ? "Validando CPF..." : "Continuar para a pesquisa"}
+                  <ChevronRight className="size-4" />
+                </button>
+              </footer>
+            </form>
+          </section>
+          <p className="mt-5 text-center text-xs leading-5 text-[#8a92a4]">
+            Seu CPF é utilizado exclusivamente para identificação nesta campanha.
+          </p>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-[#f6f7fb] px-4 py-5 sm:px-6 sm:py-8">
       <div className="mx-auto max-w-2xl">
@@ -367,10 +534,27 @@ export default function ResponderPage() {
                 <Clock3 className="size-4 text-[#8b5a46]" />
                 Cerca de {duracao} min
               </span>
-              <span className="inline-flex items-center gap-1.5">
-                <LockKeyhole className="size-4 text-[#8b5a46]" />
-                Resposta confidencial
-              </span>
+              {exigeCpf ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <ShieldCheck className="size-4 text-[#8b5a46]" />
+                  CPF: {cpf}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCpfConfirmado(false);
+                      setError("");
+                    }}
+                    className="ml-1 text-xs font-semibold text-[#8b5a46] underline hover:text-[#5d3a2e]"
+                  >
+                    Alterar
+                  </button>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5">
+                  <LockKeyhole className="size-4 text-[#8b5a46]" />
+                  Resposta anônima
+                </span>
+              )}
             </div>
             {currentIndex === 0 && (
               <p className="mt-5 rounded-2xl bg-[#fff8f4] p-4 text-sm leading-6 text-[#704435]">
@@ -436,7 +620,7 @@ export default function ResponderPage() {
                 <button
                   type="button"
                   onClick={() => void enviar()}
-                  disabled={sending || !participacaoId}
+                  disabled={sending || (!exigeCpf && !participacaoId)}
                   className="inline-flex items-center gap-2 rounded-xl bg-[#5d3a2e] px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#4e3026] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Send className="size-4" />
@@ -456,8 +640,9 @@ export default function ResponderPage() {
           </div>
         </section>
         <p className="mt-5 text-center text-xs leading-5 text-[#8a92a4]">
-          Suas respostas sao utilizadas somente para esta pesquisa. Nao envie
-          dados sensiveis.
+          {exigeCpf
+            ? "Suas respostas e seu CPF são utilizados somente para esta campanha."
+            : "Suas respostas sao utilizadas somente para esta pesquisa. Nao envie dados sensiveis."}
         </p>
       </div>
     </main>
